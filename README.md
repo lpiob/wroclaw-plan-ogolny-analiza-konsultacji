@@ -21,6 +21,10 @@ Głównym celem jest uzyskanie rzetelnych, powtarzalnych i w pełni audytowalnyc
 
 Wszystkie oryginalne pliki źródłowe (wraz z zachowanym oznaczeniem pochodzenia) znajdują się w katalogu `data/raw/`.
 
+## Narzędzia SI
+
+W procesie analizy wykorzystano wsparcie modeli językowych Gemini (Google), GPT-5.6-luna (OpenAI) przy bezpośrednim nadzorze człowieka (*augmentation and not agency*).
+
 ## Jak cytować
 
 Jeśli wykorzystujesz wyniki tej analizy, dane przetworzone lub kod w swoich artykułach, publikacjach lub materiałach prasowych, proszę o powołanie się na to źródło:
