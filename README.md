@@ -19,7 +19,7 @@ Głównym celem jest uzyskanie rzetelnych, powtarzalnych i w pełni audytowalnyc
 
 ## Materiały źródłowe
 
-Wszystkie oryginalne pliki źródłowe (wraz z zachowanym oznaczeniem pochodzenia oraz sumami kontrolnymi) znajdują się w katalogu `data/raw/`.
+Wszystkie oryginalne pliki źródłowe (wraz z zachowanym oznaczeniem pochodzenia) znajdują się w katalogu `data/raw/`.
 
 ## Jak cytować
 
