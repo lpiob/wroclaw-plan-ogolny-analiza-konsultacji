@@ -21,6 +21,14 @@ Głównym celem jest uzyskanie rzetelnych, powtarzalnych i w pełni audytowalnyc
 
 Wszystkie oryginalne pliki źródłowe (wraz z zachowanym oznaczeniem pochodzenia) znajdują się w katalogu `data/raw/`.
 
+### Ograniczenia danych i ich rekonstrukcja
+
+Zarówno wykaz uwag jak i dane prezentowane na serwerach GIS agregują poszczególne uwagi w obrębie jednego wniosku. Nawet jeśli jeden wniosek dotyczył wielu działek albo nawet obszarów na przeciwległych krańcach miasta, to jest prezentowany jako jeden wiersz w podsumowaniu i jeden punkt na mapie.
+
+W związku z tym w trakcie przetwarzania danych tworzona jest forma pośrednia która odtwarza przybliżone właściwe lokalizacje składanych uwag.
+
+Urząd udostępnia też źródłowe wnioski w postaci skanów. Zostały one wykorzystane do wybiórczego zwalidowania zrekonstruowanych danych.
+
 ## Narzędzia SI
 
 W procesie analizy wykorzystano wsparcie modeli językowych Gemini (Google), GPT-5.6-luna (OpenAI) przy bezpośrednim nadzorze człowieka (*augmentation and not agency*).
