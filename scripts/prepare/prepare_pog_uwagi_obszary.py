@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import tempfile
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from typing import Any
 
 DEFAULT_INPUT = Path("data/processed/pog_wykaz_uwag.jsonl")
 DEFAULT_OUTPUT = Path("data/processed/pog_uwagi_obszary.jsonl")
+DEFAULT_GIS_INPUT = Path("data/raw/arcgis/pog_uwagi.geojson")
 
 # Coordinates use GeoJSON [x, y] order in EPSG:2177.
 KNOWN_LOCATIONS: dict[str, dict[str, object]] = {
@@ -39,6 +41,10 @@ KNOWN_LOCATIONS: dict[str, dict[str, object]] = {
         "inferred_details": "Tramwaj na Racławickiej",
     },
     "dz. 2/8, 3/1, 3/2, 4/1, 5/1, 9/16, 9/17, 9/19, 9/21 AR.18 ob. Klecina, dz. 1, 2, 4/1, 10/5 AR.19 ob. Klecina, dz. 1/3, 1/4, 1/6, 1/9, 1/10, 2/14, 2/15, 2/16, 2/17, 3/3, 3/7, 4/1, 14/3 AR.1 ob. Krzyki, dz. 46/1, 47/1, 48/1 AR.4 ob. Krzyki, dz. 1/1, 2/1, 3/1, 5/2, 6/4, 6/19, 7/1, 7/2, 7/3 AR.9 ob. Krzyki": {
+        "inferred_coordinates": [6428940.9, 5660337.1],
+        "inferred_details": "Zachowanie Parku Krzyckiego",
+    },
+    "tereny 1KD-Z w obowiązujących miejscowych planach zagospodarowania przestrzennego zachodniej części obszaru rozwoju KRZYKI I we Wrocławiu (uchwała nr XVI/474/07 Rady Miejskiej Wrocławia z dnia 25 lutego 2008 r.) oraz południowej części obszaru rozwoju Krzyki I we Wrocławiu (uchwała nr XIV/339/07 Rady Miejskiej Wrocławia z dnia 27 stycznia 2008 r.)": {
         "inferred_coordinates": [6428940.9, 5660337.1],
         "inferred_details": "Zachowanie Parku Krzyckiego",
     },
@@ -499,6 +505,41 @@ def read_records(input_path: Path) -> Iterator[dict[str, Any]]:
             yield record
 
 
+def read_gis_points(input_path: Path) -> dict[int, list[float]]:
+    """Read one EPSG:2177 point for each notice number from GeoJSON."""
+
+    if not input_path.is_file():
+        raise FileNotFoundError(
+            f"Nie znaleziono pliku z punktami GIS: {input_path}"
+        )
+
+    with input_path.open(encoding="utf-8") as input_file:
+        data = json.load(input_file)
+
+    points: dict[int, list[float]] = {}
+    for feature in data.get("features", []):
+        properties = feature.get("properties", {})
+        notice_number = properties.get("NR")
+        geometry = feature.get("geometry") or {}
+        coordinates = geometry.get("coordinates")
+
+        if notice_number is None or geometry.get("type") != "Point":
+            continue
+        if not isinstance(coordinates, list) or len(coordinates) < 2:
+            continue
+
+        notice_key = int(notice_number)
+        point = [float(coordinates[0]), float(coordinates[1])]
+        previous_point = points.get(notice_key)
+        if previous_point is not None and previous_point != point:
+            raise ValueError(
+                f"Numer uwagi {notice_key} ma różne punkty GIS."
+            )
+        points[notice_key] = point
+
+    return points
+
+
 def attachment_index(notice_number: object, fragment: str) -> str | None:
     """Return a notice-scoped reference for a single attachment mention."""
 
@@ -511,66 +552,135 @@ def attachment_index(notice_number: object, fragment: str) -> str | None:
     )
 
 
+def is_excluded_from_repeated_search(fragment: str) -> bool:
+    """Exclude attachment references and placeholder-only area values."""
+
+    return "zgodnie" in fragment.casefold() or fragment.strip() == "-"
+
+
 def extracted_records(
     records: Iterable[dict[str, Any]],
-) -> tuple[Iterator[dict[str, Any]], dict[str, str]]:
-    """Yield one record per area fragment and build the global reference map."""
+    gis_points: dict[int, list[float]],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Build one record per area fragment and the global reference map."""
 
     area_indexes: dict[str, str] = {}
     next_area_number = 1
+    extracted: list[dict[str, Any]] = []
 
-    def generate() -> Iterator[dict[str, Any]]:
-        nonlocal next_area_number
+    for record in records:
+        try:
+            area_raw = record["obszar_raw"]
+            notice_number = record["oznaczenie_uwagi"]
+            data_wplywu = record["data_wplywu"]
+            pdf_page = record["pdf_page"]
+        except KeyError as error:
+            raise ValueError(
+                f"Brak wymaganego pola w uwadze: {error.args[0]}"
+            ) from error
 
-        for record in records:
-            try:
-                area_raw = record["obszar_raw"]
-                notice_number = record["oznaczenie_uwagi"]
-                data_wplywu = record["data_wplywu"]
-                pdf_page = record["pdf_page"]
-            except KeyError as error:
-                raise ValueError(
-                    f"Brak wymaganego pola w uwadze: {error.args[0]}"
-                ) from error
+        if not isinstance(area_raw, str):
+            raise ValueError(
+                f"Pole obszar_raw w uwadze {notice_number} nie jest tekstem."
+            )
 
-            if not isinstance(area_raw, str):
-                raise ValueError(
-                    f"Pole obszar_raw w uwadze {notice_number} nie jest tekstem."
-                )
+        fragments = [fragment.strip() for fragment in area_raw.split(";")]
+        fragments = [fragment for fragment in fragments if fragment]
 
-            fragments = [fragment.strip() for fragment in area_raw.split(";")]
-            fragments = [fragment for fragment in fragments if fragment]
-
-            for order, fragment in enumerate(fragments, start=1):
-                reference = attachment_index(notice_number, fragment)
+        for order, fragment in enumerate(fragments, start=1):
+            reference = attachment_index(notice_number, fragment)
+            if reference is None:
+                reference = area_indexes.get(fragment)
                 if reference is None:
-                    reference = area_indexes.get(fragment)
-                    if reference is None:
-                        reference = f"obszar-{next_area_number:06d}"
-                        area_indexes[fragment] = reference
-                        next_area_number += 1
+                    reference = f"obszar-{next_area_number:06d}"
+                    area_indexes[fragment] = reference
+                    next_area_number += 1
 
-                known_location = KNOWN_LOCATIONS.get(fragment)
-                yield {
+            known_location = KNOWN_LOCATIONS.get(fragment)
+            inferred_coordinates = (
+                known_location.get("inferred_coordinates")
+                if known_location is not None
+                else None
+            )
+            inferred_details = (
+                known_location.get("inferred_details")
+                if known_location is not None
+                else None
+            )
+            coordinates_source = (
+                "known_location" if inferred_coordinates is not None else None
+            )
+
+            if inferred_coordinates is None and len(fragments) == 1:
+                inferred_coordinates = gis_points.get(int(notice_number))
+                if inferred_coordinates is not None:
+                    coordinates_source = "gis_single_area"
+
+            extracted.append(
+                {
                     "data_wplywu": data_wplywu,
                     "oznaczenie_uwagi": notice_number,
                     "kolejnosc": order,
                     "obszar_extracted_raw": fragment,
                     "obszar_unique_index": reference,
-                    "inferred_coordinates": (
-                        known_location.get("inferred_coordinates")
-                        if known_location is not None
-                        else None
-                    ),
-                    "inferred_details": (
-                        known_location.get("inferred_details")
-                        if known_location is not None
-                        else None
-                    ),
+                    "inferred_coordinates": inferred_coordinates,
+                    "inferred_coordinates_source": coordinates_source,
+                    "inferred_details": inferred_details,
                     "pdf_page": pdf_page,
                 }
+            )
 
-    return generate(), area_indexes
+    return extracted, area_indexes
+
+
+def fill_repeated_coordinates(records: list[dict[str, Any]]) -> tuple[int, int]:
+    """Fill multi-fragment records from unambiguous single-fragment matches."""
+
+    notice_sizes = Counter(record["oznaczenie_uwagi"] for record in records)
+    coordinates_by_area: dict[str, set[tuple[float, ...]]] = {}
+
+    for record in records:
+        if notice_sizes[record["oznaczenie_uwagi"]] != 1:
+            continue
+        if is_excluded_from_repeated_search(record["obszar_extracted_raw"]):
+            continue
+
+        coordinates = record["inferred_coordinates"]
+        if not isinstance(coordinates, list):
+            continue
+
+        area = record["obszar_extracted_raw"]
+        coordinates_by_area.setdefault(area, set()).add(tuple(coordinates))
+
+    unambiguous_coordinates = {
+        area: next(iter(coordinates))
+        for area, coordinates in coordinates_by_area.items()
+        if len(coordinates) == 1
+    }
+    conflict_count = sum(
+        1 for coordinates in coordinates_by_area.values() if len(coordinates) > 1
+    )
+    filled_count = 0
+
+    for record in records:
+        if notice_sizes[record["oznaczenie_uwagi"]] <= 1:
+            continue
+        if record["inferred_coordinates"] is not None:
+            continue
+        if is_excluded_from_repeated_search(record["obszar_extracted_raw"]):
+            continue
+
+        coordinates = unambiguous_coordinates.get(
+            record["obszar_extracted_raw"]
+        )
+        if coordinates is None:
+            continue
+
+        record["inferred_coordinates"] = list(coordinates)
+        record["inferred_coordinates_source"] = "repeated_single_area"
+        filled_count += 1
+
+    return filled_count, conflict_count
 
 
 def write_jsonl(records: Iterable[dict[str, Any]], output_path: Path) -> int:
@@ -604,10 +714,19 @@ def write_jsonl(records: Iterable[dict[str, Any]], output_path: Path) -> int:
     return count
 
 
-def convert(input_path: Path, output_path: Path) -> tuple[int, int]:
-    records, area_indexes = extracted_records(read_records(input_path))
+def convert(
+    input_path: Path,
+    output_path: Path,
+    gis_input_path: Path,
+) -> tuple[int, int, int, int]:
+    gis_points = read_gis_points(gis_input_path)
+    records, area_indexes = extracted_records(
+        read_records(input_path),
+        gis_points,
+    )
+    filled_count, conflict_count = fill_repeated_coordinates(records)
     record_count = write_jsonl(records, output_path)
-    return record_count, len(area_indexes)
+    return record_count, len(area_indexes), filled_count, conflict_count
 
 
 def parse_args() -> argparse.Namespace:
@@ -630,15 +749,26 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_OUTPUT,
         help=f"plik wynikowy JSONL (domyślnie: {DEFAULT_OUTPUT})",
     )
+    parser.add_argument(
+        "--gis-input",
+        type=Path,
+        default=DEFAULT_GIS_INPUT,
+        help=f"warstwa punktów GIS (domyślnie: {DEFAULT_GIS_INPUT})",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    record_count, area_count = convert(args.input, args.output)
+    record_count, area_count, filled_count, conflict_count = convert(
+        args.input,
+        args.output,
+        args.gis_input,
+    )
     print(
         f"Zapisano {record_count} rekordów i {area_count} unikalnych obszarów "
-        f"do {args.output}"
+        f"do {args.output}; uzupełniono {filled_count} rekordów w drugim "
+        f"przebiegu; pominięto {conflict_count} konfliktów"
     )
     return 0
 
