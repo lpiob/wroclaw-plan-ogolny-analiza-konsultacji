@@ -17,6 +17,10 @@ DEFAULT_OUTPUT = Path("data/processed/pog_uwagi_obszary.jsonl")
 
 # Coordinates use GeoJSON [x, y] order in EPSG:2177.
 KNOWN_LOCATIONS: dict[str, dict[str, object]] = {
+    "Trasa Czeska wg archiwalnego Studium 2010": {
+        "inferred_coordinates": [6426531.7, 5662217.0],
+        "inferred_details": "Trasa Czeska",
+    },
     "Osiedle Oporów": {
         "inferred_coordinates": [6427001.4, 5660944.5],
         "inferred_details": "Osiedle Oporów",
@@ -33,6 +37,10 @@ KNOWN_LOCATIONS: dict[str, dict[str, object]] = {
     ): {
         "inferred_coordinates": [6429367.9, 5660953.9],
         "inferred_details": "Tramwaj na Racławickiej",
+    },
+    "dz. 2/8, 3/1, 3/2, 4/1, 5/1, 9/16, 9/17, 9/19, 9/21 AR.18 ob. Klecina, dz. 1, 2, 4/1, 10/5 AR.19 ob. Klecina, dz. 1/3, 1/4, 1/6, 1/9, 1/10, 2/14, 2/15, 2/16, 2/17, 3/3, 3/7, 4/1, 14/3 AR.1 ob. Krzyki, dz. 46/1, 47/1, 48/1 AR.4 ob. Krzyki, dz. 1/1, 2/1, 3/1, 5/2, 6/4, 6/19, 7/1, 7/2, 7/3 AR.9 ob. Krzyki": {
+        "inferred_coordinates": [6428940.9, 5660337.1],
+        "inferred_details": "Zachowanie Parku Krzyckiego",
     },
     "strefa 100SN": {
         "inferred_coordinates": [6425556.0, 5668312.3]
@@ -550,12 +558,12 @@ def extracted_records(
                     "obszar_extracted_raw": fragment,
                     "obszar_unique_index": reference,
                     "inferred_coordinates": (
-                        known_location["inferred_coordinates"]
+                        known_location.get("inferred_coordinates")
                         if known_location is not None
                         else None
                     ),
                     "inferred_details": (
-                        known_location["inferred_details"]
+                        known_location.get("inferred_details")
                         if known_location is not None
                         else None
                     ),
