@@ -15,6 +15,450 @@ from typing import Any
 DEFAULT_INPUT = Path("data/processed/pog_wykaz_uwag.jsonl")
 DEFAULT_OUTPUT = Path("data/processed/pog_uwagi_obszary.jsonl")
 
+# Coordinates use GeoJSON [x, y] order in EPSG:2177.
+KNOWN_LOCATIONS: dict[str, dict[str, object]] = {
+    "Osiedle Oporów": {
+        "inferred_coordinates": [6427001.4, 5660944.5],
+        "inferred_details": "Osiedle Oporów",
+    },
+    (
+        "dz. 17/2 AR. 40 ob. Grabiszyn, dz. 17/6 AR. 40 ob. Grabiszyn, "
+        "dz. 17/8 AR. 40 ob. Grabiszyn, dz. 19 AR. 40 ob. Grabiszyn, "
+        "dz. 4 AR. 41 ob. Grabiszyn, dz. 2/8 AR. 1 ob. Krzyki, "
+        "dz. 3/1 AR. 1 ob. Krzyki, dz. 5/1 AR. 1 ob. Krzyki, "
+        "dz. 6/1 AR. 1 ob. Krzyki, dz. 10 AR. 42 ob. Grabiszyn, "
+        "dz. 7/19 AR. 1 ob. Krzyki, dz. 7/2 AR. 37 ob. Grabiszyn, "
+        "dz. 7/18 AR. 1 ob. Krzyki, dz. 1/3 AR. 2 ob. Krzyki, "
+        "dz. 67 AR. 45 ob. Grabiszyn, dz. 1/3 AR. 6 ob. Borek"
+    ): {
+        "inferred_coordinates": [6429367.9, 5660953.9],
+        "inferred_details": "Tramwaj na Racławickiej",
+    },
+    "strefa 100SN": {
+        "inferred_coordinates": [6425556.0, 5668312.3]
+    },
+    "strefa 105SN": {
+        "inferred_coordinates": [6429838.3, 5668938.3]
+    },
+    "strefa 1098SW": {
+        "inferred_coordinates": [6436214.3, 5666560.0]
+    },
+    "strefa 125SO": {
+        "inferred_coordinates": [6429404.0, 5673024.7]
+    },
+    "strefa 12SU": {
+        "inferred_coordinates": [6435518.8, 5659155.5]
+    },
+    "strefa 133SI": {
+        "inferred_coordinates": [6435791.8, 5667768.2]
+    },
+    "strefa 1493SW": {
+        "inferred_coordinates": [6437459.3, 5668211.1]
+    },
+    "strefa 153SP": {
+        "inferred_coordinates": [6421197.1, 5666890.5]
+    },
+    "strefa 1698SW": {
+        "inferred_coordinates": [6438832.8, 5670034.1]
+    },
+    "strefa 1699SW": {
+        "inferred_coordinates": [6438657.5, 5669988.6]
+    },
+    "strefa 16SP": {
+        "inferred_coordinates": [6436474.5, 5659226.3]
+    },
+    "strefa 171SN": {
+        "inferred_coordinates": [6434970.6, 5658809.9]
+    },
+    "strefa 1823SW": {
+        "inferred_coordinates": [6433571.8, 5661640.4]
+    },
+    "strefa 1833SW": {
+        "inferred_coordinates": [6433409.2, 5661787.8]
+    },
+    "strefa 1862SJ": {
+        "inferred_coordinates": [6438849.5, 5664679.5]
+    },
+    "strefa 189SU": {
+        "inferred_coordinates": [6429531.9, 5659885.2]
+    },
+    "strefa 1904SW": {
+        "inferred_coordinates": [6429891.5, 5661956.4]
+    },
+    "strefa 2005SW": {
+        "inferred_coordinates": [6431110.0, 5662509.2]
+    },
+    "strefa 2112SW": {
+        "inferred_coordinates": [6432881.7, 5663013.0]
+    },
+    "strefa 2165SW": {
+        "inferred_coordinates": [6429919.2, 5663211.4]
+    },
+    "strefa 2166SW": {
+        "inferred_coordinates": [6432882.7, 5663210.4]
+    },
+    "strefa 225SN": {
+        "inferred_coordinates": [6428531.6, 5660283.3]
+    },
+    "strefa 234SW": {
+        "inferred_coordinates": [6435646.8, 5659075.3]
+    },
+    "strefa 2429SW": {
+        "inferred_coordinates": [6431805.2, 5664259.0]
+    },
+    "strefa 2448SW": {
+        "inferred_coordinates": [6431119.7, 5664311.4]
+    },
+    "strefa 2486SW": {
+        "inferred_coordinates": [6432159.7, 5664221.4]
+    },
+    "strefa 2653SW": {
+        "inferred_coordinates": [6434391.7, 5664832.9]
+    },
+    "strefa 2732SW": {
+        "inferred_coordinates": [6431109.7, 5665018.0]
+    },
+    "strefa 2749SW": {
+        "inferred_coordinates": [6433976.3, 5665092.5]
+    },
+    "strefa 2750SW": {
+        "inferred_coordinates": [6430517.5, 5665052.3]
+    },
+    "strefa 286SW": {
+        "inferred_coordinates": [6435327.6, 5659341.1]
+    },
+    "strefa 2893SW": {
+        "inferred_coordinates": [6431149.5, 5665487.0]
+    },
+    "strefa 2894SW": {
+        "inferred_coordinates": [6431035.5, 5665555.1]
+    },
+    "strefa 2897SW": {
+        "inferred_coordinates": [6430945.0, 5665627.5]
+    },
+    "strefa 2901SW": {
+        "inferred_coordinates": [6431140.0, 5665632.8]
+    },
+    "strefa 2909SW": {
+        "inferred_coordinates": [6431006.7, 5665668.0]
+    },
+    "strefa 2914SW": {
+        "inferred_coordinates": [6431098.1, 5665717.7]
+    },
+    "strefa 2915SW": {
+        "inferred_coordinates": [6430942.5, 5665711.6]
+    },
+    "strefa 2926SW": {
+        "inferred_coordinates": [6431052.5, 5665774.2]
+    },
+    "strefa 2949SW": {
+        "inferred_coordinates": [6433313.6, 5665509.2]
+    },
+    "strefa 29SU": {
+        "inferred_coordinates": [6431954.6, 5660302.4]
+    },
+    "strefa 3038SW": {
+        "inferred_coordinates": [6428239.2, 5666049.9]
+    },
+    "strefa 3088SW": {
+        "inferred_coordinates": [6428827.6, 5666243.5]
+    },
+    "strefa 3103SW": {
+        "inferred_coordinates": [6429402.8, 5666434.6]
+    },
+    "strefa 3133SW": {
+        "inferred_coordinates": [6432479.6, 5666966.7]
+    },
+    "strefa 3138SW": {
+        "inferred_coordinates": [6432415.7, 5667120.7]
+    },
+    "strefa 3154SW": {
+        "inferred_coordinates": [6427714.9, 5667376.2]
+    },
+    "strefa 3157SW": {
+        "inferred_coordinates": [6432343.5, 5667361.9]
+    },
+    "strefa 3164SW": {
+        "inferred_coordinates": [6432352.8, 5667320.9]
+    },
+    "strefa 3176SW": {
+        "inferred_coordinates": [6431895.1, 5667514.8]
+    },
+    "strefa 3182SW": {
+        "inferred_coordinates": [6432285.5, 5667521.0]
+    },
+    "strefa 3184SW": {
+        "inferred_coordinates": [6432262.3, 5667584.2]
+    },
+    "strefa 3267SW": {
+        "inferred_coordinates": [6433622.1, 5658720.4]
+    },
+    "strefa 3365SW": {
+        "inferred_coordinates": [6424919.1, 5667602.4]
+    },
+    "strefa 3366SW": {
+        "inferred_coordinates": [6424871.2, 5667531.3]
+    },
+    "strefa 3410SW": {
+        "inferred_coordinates": [6430415.9, 5671874.9]
+    },
+    "strefa 3437SW": {
+        "inferred_coordinates": [6431161.3, 5665726.9]
+    },
+    "strefa 3762SJ": {
+        "inferred_coordinates": [6438722.6, 5670165.2]
+    },
+    "strefa 383SU": {
+        "inferred_coordinates": [6438852.9, 5664724.4]
+    },
+    "strefa 4091SJ": {
+        "inferred_coordinates": [6429460.8, 5672026.8]
+    },
+    "strefa 4095SJ": {
+        "inferred_coordinates": [6430568.1, 5672253.5]
+    },
+    "strefa 4130SJ": {
+        "inferred_coordinates": [6428813.6, 5673537.7]
+    },
+    "strefa 48SI": {
+        "inferred_coordinates": [6421807.0, 5668861.4]
+    },
+    "strefa 530SU": {
+        "inferred_coordinates": [6432328.9, 5667037.5]
+    },
+    "strefa 576SU": {
+        "inferred_coordinates": [6439142.9, 5668067.9]
+    },
+    "strefa 585SU": {
+        "inferred_coordinates": [6436059.5, 5668147.4]
+    },
+    "strefa 591SN": {
+        "inferred_coordinates": [6436851.7, 5666859.1]
+    },
+    "strefa 623SW": {
+        "inferred_coordinates": [6430373.2, 5661559.9]
+    },
+    "strefa 63SK": {
+        "inferred_coordinates": [6427986.0, 5663820.2]
+    },
+    "strefa 649SU": {
+        "inferred_coordinates": [6430446.0, 5672258.5]
+    },
+    "strefa 658SU": {
+        "inferred_coordinates": [6432466.3, 5667122.9]
+    },
+    "strefa 658SW": {
+        "inferred_coordinates": [6430056.2, 5661709.7]
+    },
+    "strefa 68SN": {
+        "inferred_coordinates": [6438104.9, 5663526.8]
+    },
+    "strefa 73SW": {
+        "inferred_coordinates": [6426938.9, 5664414.9]
+    },
+    "strefa 7SJ": {
+        "inferred_coordinates": [6433521.7, 5657306.1]
+    },
+    "strefa 814SJ": {
+        "inferred_coordinates": [6429899.4, 5659953.9]
+    },
+    "strefa 841SJ": {
+        "inferred_coordinates": [6427831.9, 5660043.9]
+    },
+    "strefa 86SI": {
+        "inferred_coordinates": [6427612.8, 5663275.9]
+    },
+    "strefa 86SU": {
+        "inferred_coordinates": [6438562.2, 5664557.3]
+    },
+    "strefa 884SJ": {
+        "inferred_coordinates": [6428639.3, 5660016.7]
+    },
+    "strefa 88SU": {
+        "inferred_coordinates": [6438282.0, 5664615.7]
+    },
+    "strefa 90SK": {
+        "inferred_coordinates": [6432410.7, 5661932.4]
+    },
+    "strefa 90SU": {
+        "inferred_coordinates": [6428672.1, 5664728.5]
+    },
+    "strefa 99SU": {
+        "inferred_coordinates": [6426148.5, 5665364.7]
+    },
+    "strefa 101SU": {
+        "inferred_coordinates": [6430528.4, 5665537.5]
+    },
+    "strefa 11SH": {
+        "inferred_coordinates": [6428327.9, 5666215.7]
+    },
+    "strefa 194SN": {
+        "inferred_coordinates": [6427965.7, 5659535.2]
+    },
+    "strefa 3051SW": {
+        "inferred_coordinates": [6429104.3, 5666130.1]
+    },
+    "strefa 3098SW": {
+        "inferred_coordinates": [6427817.4, 5666413.1]
+    },
+    "strefa 3102SW": {
+        "inferred_coordinates": [6427733.4, 5666461.7]
+    },
+    "strefa 3104SW": {
+        "inferred_coordinates": [6427619.7, 5666431.3]
+    },
+    "strefa 3144SW": {
+        "inferred_coordinates": [6432691.3, 5667298.0]
+    },
+    "strefa 35SI": {
+        "inferred_coordinates": [6431724.4, 5665897.0]
+    },
+    "strefa 3639SJ": {
+        "inferred_coordinates": [6436561.3, 5669631.7]
+    },
+    "strefa 3726SJ": {
+        "inferred_coordinates": [6423046.7, 5669925.1]
+    },
+    "strefa 59SO": {
+        "inferred_coordinates": [6417432.1, 5668050.5]
+    },
+    "strefa 5SK": {
+        "inferred_coordinates": [6434061.8, 5657471.7]
+    },
+    "strefa 61SI": {
+        "inferred_coordinates": [6435774.4, 5659296.8]
+    },
+    "strefa 637SU": {
+        "inferred_coordinates": [6430852.7, 5670933.9]
+    },
+    "strefa 722SJ": {
+        "inferred_coordinates": [6428564.4, 5659601.3]
+    },
+    "strefa 788SN": {
+        "inferred_coordinates": [6426813.8, 5663482.6]
+    },
+    "strefa 79SU": {
+        "inferred_coordinates": [6426523.8, 5663905.3]
+    },
+    "strefa 826SW": {
+        "inferred_coordinates": [6437933.0, 5663384.6]
+    },
+    "strefa 90SN": {
+        "inferred_coordinates": [6427588.5, 5666153.5]
+    },
+    "strefa 142SN": {
+        "inferred_coordinates": [6435537.4, 5658399.4]
+    },
+    "strefa 2744SW": {
+        "inferred_coordinates": [6426718.9, 5664792.2]
+    },
+    "strefa 2937SW": {
+        "inferred_coordinates": [6428112.0, 5665716.9]
+    },
+    "strefa 2SO": {
+        "inferred_coordinates": [6440099.3, 5670806.9]
+    },
+    "strefa 3348SW": {
+        "inferred_coordinates": [6426627.6, 5666952.2]
+    },
+    "strefa 4102SJ": {
+        "inferred_coordinates": [6423852.0, 5671852.7]
+    },
+    "strefa 501SU": {
+        "inferred_coordinates": [6427010.5, 5666111.0]
+    },
+    "strefa 52SO": {
+        "inferred_coordinates": [6439927.8, 5667116.4]
+    },
+    "strefa 586SU": {
+        "inferred_coordinates": [6426102.9, 5667977.8]
+    },
+    "strefa 608SU": {
+        "inferred_coordinates": [6423639.3, 5669167.9]
+    },
+    "strefa 65SI": {
+        "inferred_coordinates": [6431239.9, 5659735.3]
+    },
+    "strefa 82SP": {
+        "inferred_coordinates": [6428119.1, 5664140.5]
+    },
+    "strefa 10SK": {
+        "inferred_coordinates": [6435403.9, 5658398.3]
+    },
+    "strefa 112SN": {
+        "inferred_coordinates": [6423420.6, 5670697.7]
+    },
+    "strefa 1329SW": {
+        "inferred_coordinates": [6438342.2, 5667635.5]
+    },
+    "strefa 39SN": {
+        "inferred_coordinates": [6435105.3, 5658268.0]
+    },
+    "strefa 597SU": {
+        "inferred_coordinates": [6423884.6, 5668392.8]
+    },
+    "strefa 5SN": {
+        "inferred_coordinates": [6427217.7, 5661193.2]
+    },
+    "strefa 7SP": {
+        "inferred_coordinates": [6428545.2, 5658431.2]
+    },
+    "strefa 92SW": {
+        "inferred_coordinates": [6418889.9, 5667747.4]
+    },
+    "strefa 13SP": {
+        "inferred_coordinates": [6428626.4, 5658683.3]
+    },
+    "strefa 165SN": {
+        "inferred_coordinates": [6427245.5, 5658752.9]
+    },
+    "strefa 2685SW": {
+        "inferred_coordinates": [6433961.0, 5664846.9]
+    },
+    "strefa 646SU": {
+        "inferred_coordinates": [6430279.3, 5671638.4]
+    },
+    "strefa 653SU": {
+        "inferred_coordinates": [6423391.7, 5669258.7]
+    },
+    "strefa 1345SW": {
+        "inferred_coordinates": [6437930.5, 5667735.3]
+    },
+    "strefa 1434SW": {
+        "inferred_coordinates": [6438345.9, 5667981.1]
+    },
+    "strefa 36SW": {
+        "inferred_coordinates": [6433080.3, 5661009.2]
+    },
+    "strefa 2843SJ": {
+        "inferred_coordinates": [6438611.2, 5667435.2]
+    },
+    "strefa 650SN": {
+        "inferred_coordinates": [6431777.2, 5668219.8]
+    },
+    "strefa 189SP": {
+        "inferred_coordinates": [6436569.6, 5671274.2]
+    },
+    "strefa 235SW": {
+        "inferred_coordinates": [6435229.7, 5658797.3]
+    },
+    "strefa 1390SW": {
+        "inferred_coordinates": [6438379.1, 5667859.1]
+    },
+    "strefa 3328SW": {
+        "inferred_coordinates": [6425944.5, 5663811.1]
+    },
+    "strefa 39SI": {
+        "inferred_coordinates": [6423194.1, 5666107.3]
+    },
+    "strefa 2601SW": {
+        "inferred_coordinates": [6426770.2, 5664772.6]
+    },
+    "strefa 3170SW": {
+        "inferred_coordinates": [6432207.3, 5667454.8]
+    }
+}
+
 ATTACHMENT_REFERENCE = re.compile(
     r"\bzałącznik\w*(?:\s+graficzn\w+)?\s+nr\.?\s*(\d+)\b",
     re.IGNORECASE,
@@ -98,12 +542,23 @@ def extracted_records(
                         area_indexes[fragment] = reference
                         next_area_number += 1
 
+                known_location = KNOWN_LOCATIONS.get(fragment)
                 yield {
                     "data_wplywu": data_wplywu,
                     "oznaczenie_uwagi": notice_number,
                     "kolejnosc": order,
                     "obszar_extracted_raw": fragment,
                     "obszar_unique_index": reference,
+                    "inferred_coordinates": (
+                        known_location["inferred_coordinates"]
+                        if known_location is not None
+                        else None
+                    ),
+                    "inferred_details": (
+                        known_location["inferred_details"]
+                        if known_location is not None
+                        else None
+                    ),
                     "pdf_page": pdf_page,
                 }
 
