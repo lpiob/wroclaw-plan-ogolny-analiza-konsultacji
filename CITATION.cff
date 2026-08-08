@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "Jeśli korzystasz z tych danych lub kodu, zacytuj je w poniższy sposób."
+authors:
+  - family-names: "Biegaj"
+    given-names: "Łukasz"
+title: "Niezależna analiza wniosków mieszkańców do projektu Planu Ogólnego Wrocławia"
+date-released: 2026-08-08
+url: "https://github.com/lpiob/wroclaw-plan-ogolny-analiza-konsultacji"
