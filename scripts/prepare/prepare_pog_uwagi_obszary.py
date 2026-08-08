@@ -48,6 +48,42 @@ KNOWN_LOCATIONS: dict[str, dict[str, object]] = {
         "inferred_coordinates": [6428940.9, 5660337.1],
         "inferred_details": "Zachowanie Parku Krzyckiego",
     },
+    "zgodnie z załącznikiem graficznym nr 4 do uwagi, strefy 413SW, 394SW, 333SW, 318SW, 280SW, 45SN": {
+        "inferred_coordinates": [6430095.5, 5659593.1],
+        "inferred_details": "Zachowanie skali zabudowy na Krzykach i Partynicach",
+    },
+    "zgodnie z załącznikiem graficznym nr 3 do uwagi, strefy 413SW, 394SW, 333SW, 318SW, 280SW, 45SN": {
+        "inferred_coordinates": [6430095.5, 5659593.1],
+        "inferred_details": "Zachowanie skali zabudowy na Krzykach i Partynicach",
+    },
+    "zgodnie z załącznikiem graficznym nr 5 do uwagi, strefy 413SW, 394SW, 333SW, 318SW, 280SW, 45SN": {
+        "inferred_coordinates": [6430095.5, 5659593.1],
+        "inferred_details": "Zachowanie skali zabudowy na Krzykach i Partynicach",
+    },
+    "zgodnie z załącznikiem graficznym nr 2 do uwagi, strefy 413SW, 394SW, 333SW, 318SW, 280SW, 45SN": {
+        "inferred_coordinates": [6430095.5, 5659593.1],
+        "inferred_details": "Zachowanie skali zabudowy na Krzykach i Partynicach",
+    },
+    "dz. 67 AR. 45 ob. Grabiszyn, dz. 2 AR. 6 ob. Borek, dz. 1/2 AR. 45 ob. Grabiszyn, dz. 3/1 AR. 37 ob. Grabiszyn": {
+        "inferred_coordinates": [6429887.53, 5661163.46],
+        "inferred_details": "Węzeł przesiadkowy koło górki Skarbowców",
+    },
+    "dz. 7/39 AR. 23 ob. Grabiszyn, dz. 2/32 AR. 24 ob. Grabiszyn, dz. 25/2 AR. 27 ob. Grabiszyn, dz. 32/2 AR. 26 ob. Grabiszyn, dz. 18/5 AR. 23 ob. Grabiszyn, dz. 21/6, AR. 23 ob. Grabiszyn": {
+        "inferred_coordinates": [6428547.4, 5662729.6],
+        "inferred_details": "Uporządkowanie obszarów wokoł FAT",
+    },
+    "zgodnie z załącznikiem graficznym nr 3 do uwagi (strefa OUZ Krzyki-Partynice)": {
+        "inferred_coordinates": [ 6430806.8, 5659695.2],
+        "inferred_details": "Zachowanie kształtu osiedla Alina",
+    },
+    "zgodnie z załącznikiem graficznym nr 4 do uwagi (strefa OUZ Krzyki-Partynice)": {
+        "inferred_coordinates": [ 6430806.8, 5659695.2],
+        "inferred_details": "Zachowanie kształtu osiedla Alina",
+    },
+    "zgodnie z załącznikiem graficznym nr 3 do uwagi (strefa OUZ Krzyki- Partynice)": {
+        "inferred_coordinates": [ 6430806.8, 5659695.2],
+        "inferred_details": "Zachowanie kształtu osiedla Alina",
+    },
     "strefa 100SN": {
         "inferred_coordinates": [6425556.0, 5668312.3]
     },
