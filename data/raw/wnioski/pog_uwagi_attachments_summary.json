@@ -1,0 +1,15 @@
+{
+  "started_at": "2026-08-08T18:38:52+00:00",
+  "updated_at": "2026-08-08T18:40:20+00:00",
+  "archive_count": 222,
+  "processed_archive_count": 222,
+  "status_counts": {
+    "already_present": 196,
+    "partial": 1,
+    "unavailable": 25
+  },
+  "expected_pdf_count": 11081,
+  "present_pdf_count": 9821,
+  "missing_pdf_count": 1260,
+  "missing_archive_count": 25
+}
