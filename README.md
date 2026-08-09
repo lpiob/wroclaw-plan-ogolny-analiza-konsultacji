@@ -17,21 +17,41 @@ Głównym celem jest uzyskanie rzetelnych, powtarzalnych i w pełni audytowalnyc
 > **Uwaga:** To repozytorium **nie analizuje** ostatecznych zapisów samego projektu Planu Ogólnego ani ustaleń urbanistycznych. Skupia się wyłącznie na ilościowej i jakościowej analizie etapu konsultacji społecznych (wniosków mieszkańców).
 
 
-## Materiały źródłowe
 
-Wszystkie oryginalne pliki źródłowe (wraz z zachowanym oznaczeniem pochodzenia) znajdują się w katalogu `data/raw/`.
-
-### Ograniczenia danych i ich rekonstrukcja
+## Ograniczenia danych i ich rekonstrukcja
 
 Zarówno wykaz uwag jak i dane prezentowane na serwerach GIS agregują poszczególne uwagi w obrębie jednego wniosku. Nawet jeśli jeden wniosek dotyczył wielu działek albo nawet obszarów na przeciwległych krańcach miasta, to jest prezentowany jako jeden wiersz w podsumowaniu i jeden punkt na mapie.
 
 W związku z tym w trakcie przetwarzania danych tworzona jest forma pośrednia która odtwarza przybliżone właściwe lokalizacje składanych uwag.
 
-Urząd udostępnia też źródłowe wnioski w postaci skanów. Zostały one wykorzystane do wybiórczego zwalidowania zrekonstruowanych danych.
+Urząd udostępnia też źródłowe wnioski w postaci skanów. Zostały one wykorzystane do wybiórczego zwalidowania zrekonstruowanych danych oraz do uzupełnienia brakujących informacji, np. szczegółowej treści uwag, jesli opracowanie wymieniało je ogólnikowo.
+
+## Materiały źródłowe
+
+Wszystkie oryginalne pliki źródłowe (wraz z zachowanym oznaczeniem pochodzenia) znajdują się w katalogu `data/raw/`.
+
+1. Pliki źródłowe pdf `data/raw/*.pdf` pobrane ze strony BIP zgodnie z opisem w `data/raw/README.md`.
+2. Pliki źródłowe geojson `data/raw/arcgis/` pobrane z serwera gis.um.wroc.pl zgodnie z opisem w `data/raw/README.md`.
+3. Wnioski źródłowe pdf `data/raw/wnioski/*` pobrane ze stron BIP zgodnie z opisem w `data/raw/wnioski/README.md`.
+
+## Materiały przetworzone
+
+1. Plik z wykazem uwag `data/raw/pog_wykaz_uwag_.pdf` został przetworzony do pliku `pog_wykaz_uwag.jsonl` bez modyfikacji - skrypt `scripts/prepare/prepare_pog_wykaz_uwag.py`.
+2. Przetworzone nagłówki wniosków - przetworzone przez OCR nagłówki każdej strony każdego wniosku z folderu `data/raw/wnioski/*` za pomocą skryptu `scripts/prepare/prepare_pog_page_headers.py` z plikiem wynikowym w `data/processed/pog_wnioski_page_headers.jsonl`
+3. Plik z wykazem uwag `data/processed/pog_wykaz_uwag.jsonl` został przetworzony za pomocą skryptu `scripts/prepare/prepare_pog_uwagi_obszary.py` w celu rozdzielenia wniosków na uwagi oraz uzupełnienia informacji geograficznej. Do uzupełnienia tej informacji wykorzystano informacje z plików źródłowych geojson, informacje z innych wniosków w drugim przebiegu, manualnie wprowadzone koordynaty dla najczęściej wprowadzanych obszarów, oraz skany nagłówków stron wniosków.
+
+
+## Materiały przeznaczone do analizy
+
+Ww. działania pozwoliły na uzyskanie nast. zasobów przeznaczonych do bezpośredniej analizy:
+- `data/processed/pog_wykaz_uwag.jsonl` - wykaz uwag, bez informacji o sposobie ich rozpatrzenia
+- `data/raw/arcgis/*` - pliki geojson z informacjami o projekcie planu przed i po etapie konsultacji, osiedlach Wrocławia
+
+
 
 ## Narzędzia SI
 
-W procesie analizy wykorzystano wsparcie modeli językowych Gemini (Google), GPT-5.6-luna (OpenAI) przy bezpośrednim nadzorze człowieka (*augmentation and not agency*).
+W procesie analizy wykorzystano wsparcie modeli językowych Gemini (Google), GPT-5.6-luna (OpenAI) przy bezpośrednim nadzorze człowieka (*augmentation and not agency*). Model nie działał tu automatycznie, a każdy krok i jego efekt końcowy był walidowany ręcznie przez człowieka.
 
 ## Jak cytować
 
