@@ -8,7 +8,9 @@ header is passed to Tesseract; the rest of each scanned page is never OCR'd.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -25,6 +27,7 @@ DEFAULT_DPI = 300
 DEFAULT_LANGUAGE = "pol"
 DEFAULT_PSM = 6
 DEFAULT_TOP_FRACTION = 0.1
+DEFAULT_WORKERS = min(8, os.cpu_count() or 1)
 PDF_NAME_RE = re.compile(r"^(?P<wniosek>\d+)_ua\.pdf$", re.IGNORECASE)
 
 
@@ -94,6 +97,12 @@ def run_tesseract(
         input=image.tobytes("png"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            # One Tesseract process per worker is already parallelized.
+            "OMP_NUM_THREADS": "1",
+            "OMP_THREAD_LIMIT": "1",
+        },
         check=False,
     )
     if result.returncode != 0:
@@ -242,8 +251,9 @@ def write_jsonl(
     top_fraction: float,
     tesseract: str,
     save_images: Path | None,
+    workers: int,
 ) -> tuple[int, int]:
-    """Process PDFs sequentially and append one record per PDF."""
+    """Process PDFs in parallel while writing JSONL from one thread."""
 
     if output_path.exists() and not resume and not overwrite:
         raise RuntimeError(
@@ -253,25 +263,23 @@ def write_jsonl(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     completed = load_completed_files(output_path) if resume and output_path.exists() else set()
     mode = "a" if resume and output_path.exists() else "w"
-    processed = 0
     skipped = 0
     pdf_list = list(pdfs)
+    pending = []
 
-    with output_path.open(mode, encoding="utf-8", buffering=1) as output_file:
-        for position, pdf_path in enumerate(pdf_list, start=1):
-            if str(pdf_path) in completed:
-                skipped += 1
-                print(
-                    f"[{position}/{len(pdf_list)}] pomijam {pdf_path.name}",
-                    file=sys.stderr,
-                )
-                continue
+    for pdf_path in pdf_list:
+        if str(pdf_path) in completed:
+            skipped += 1
+        else:
+            pending.append(pdf_path)
 
-            print(
-                f"[{position}/{len(pdf_list)}] OCR {pdf_path.name}",
-                file=sys.stderr,
-            )
-            record = process_pdf(
+    for pdf_path in pdf_list:
+        if str(pdf_path) in completed:
+            print(f"pomijam {pdf_path.name}", file=sys.stderr)
+
+    def process_one(pdf_path: Path) -> dict[str, object]:
+        try:
+            return process_pdf(
                 pdf_path,
                 dpi=dpi,
                 language=language,
@@ -280,8 +288,43 @@ def write_jsonl(
                 tesseract=tesseract,
                 save_images=save_images,
             )
-            output_file.write(json.dumps(record, ensure_ascii=False) + "\n")
-            processed += 1
+        except Exception as error:
+            record = base_record(pdf_path)
+            record.update(
+                {
+                    "status": "error",
+                    "error": f"Nieoczekiwany błąd workera: {error}",
+                }
+            )
+            return record
+
+    processed = 0
+
+    with output_path.open(mode, encoding="utf-8", buffering=1) as output_file:
+        if workers == 1:
+            results = ((pdf_path, process_one(pdf_path)) for pdf_path in pending)
+            for pdf_path, record in results:
+                processed += 1
+                print(f"OCR {pdf_path.name} ({processed}/{len(pending)})", file=sys.stderr)
+                output_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        else:
+            with ThreadPoolExecutor(
+                max_workers=workers,
+                thread_name_prefix="pog-ocr",
+            ) as executor:
+                futures = {
+                    executor.submit(process_one, pdf_path): pdf_path
+                    for pdf_path in pending
+                }
+                for future in as_completed(futures):
+                    pdf_path = futures[future]
+                    record = future.result()
+                    processed += 1
+                    print(
+                        f"OCR {pdf_path.name} ({processed}/{len(pending)})",
+                        file=sys.stderr,
+                    )
+                    output_file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     return processed, skipped
 
@@ -313,6 +356,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--language", default=DEFAULT_LANGUAGE)
     parser.add_argument("--psm", type=int, default=DEFAULT_PSM)
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help=(
+            "liczba równoległych PDF-ów w trybie katalogu "
+            f"(domyślnie: {DEFAULT_WORKERS})"
+        ),
+    )
+    parser.add_argument(
         "--top-fraction",
         type=float,
         default=DEFAULT_TOP_FRACTION,
@@ -335,6 +387,8 @@ def main() -> int:
         raise SystemExit("--top-fraction musi być większe od 0 i nie większe niż 1")
     if args.dpi <= 0:
         raise SystemExit("--dpi musi być dodatnie")
+    if args.workers <= 0:
+        raise SystemExit("--workers musi być dodatnie")
     if args.pdf is not None and args.resume:
         raise SystemExit("--resume działa tylko w trybie katalogu")
     if args.resume and args.overwrite:
@@ -383,6 +437,7 @@ def main() -> int:
         top_fraction=args.top_fraction,
         tesseract=args.tesseract,
         save_images=args.save_images,
+        workers=args.workers,
     )
     print(
         f"Zakończono: przetworzono {processed}, pominięto {skipped}; "
