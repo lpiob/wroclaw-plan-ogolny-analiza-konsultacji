@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Split the source area description into semicolon-separated references."""
+"""Split area descriptions and resolve attachment locations from OCR headers."""
 
 from __future__ import annotations
 
@@ -16,6 +16,9 @@ from typing import Any
 DEFAULT_INPUT = Path("data/processed/pog_wykaz_uwag.jsonl")
 DEFAULT_OUTPUT = Path("data/processed/pog_uwagi_obszary.jsonl")
 DEFAULT_GIS_INPUT = Path("data/raw/arcgis/pog_uwagi.geojson")
+DEFAULT_PAGE_HEADERS_INPUT = Path(
+    "data/processed/pog_wnioski_page_headers.jsonl"
+)
 
 # Coordinates use GeoJSON [x, y] order in EPSG:2177.
 KNOWN_LOCATIONS: dict[str, dict[str, object]] = {
@@ -510,9 +513,155 @@ KNOWN_LOCATIONS: dict[str, dict[str, object]] = {
 }
 
 ATTACHMENT_REFERENCE = re.compile(
-    r"\bzałącznik\w*(?:\s+graficzn\w+)?\s+nr\.?\s*(\d+)\b",
+    r"\bzałącznik\w*(?:\s+graficzn\w+)?\s+(?:nr\.?\s*)?(\d+)\b",
     re.IGNORECASE,
 )
+ATTACHMENT_HEADER = re.compile(
+    r"\bzałącznik\s+(?:nr\.?\s*)?(?P<number>\d+)\s*[:\-]\s*"
+    r"(?P<title>[^\r\n]+)",
+    re.IGNORECASE,
+)
+
+# Add verified attachment-title patterns here. Coordinates use GeoJSON [x, y]
+# order in EPSG:2177. The title is matched after OCR whitespace cleanup.
+ATTACHMENT_LOCATION_RULES: tuple[
+    tuple[re.Pattern[str], dict[str, object]], ...
+] = (
+    (
+        re.compile(
+            r"Zachowanie\s+.*\s+osiedla\s+Alina",
+            re.IGNORECASE,
+        ),
+        {
+            "inferred_coordinates": [6430806.8, 5659695.2],
+            "inferred_details": "Zachowanie kształtu osiedla Alina",
+            "rule_id": "zachowanie-osiedla-alina",
+        },
+    ),
+)
+
+
+def normalize_attachment_title(title: str) -> str:
+    """Normalize OCR noise around an attachment title."""
+
+    title = re.sub(r"\s+", " ", title)
+    return title.strip(" \t|,;:-")
+
+
+def read_attachment_headers(
+    input_path: Path,
+) -> dict[tuple[int, int], list[dict[str, object]]]:
+    """Index attachment titles from the optional, incrementally built JSONL."""
+
+    if not input_path.is_file():
+        return {}
+
+    attachment_headers: dict[tuple[int, int], list[dict[str, object]]] = {}
+
+    with input_path.open(encoding="utf-8") as input_file:
+        for line_number, line in enumerate(input_file, start=1):
+            if not line.strip():
+                continue
+
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as error:
+                # The OCR producer writes records incrementally. A truncated
+                # final line is an in-progress record, not a fatal input error.
+                if not line.endswith("\n"):
+                    continue
+                raise ValueError(
+                    f"Nieprawidłowy JSON w nagłówkach w wierszu "
+                    f"{line_number}: {error}"
+                ) from error
+
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"Wiersz {line_number} nagłówków nie zawiera obiektu JSON."
+                )
+
+            notice_number = record.get("wniosek")
+            page_headers = record.get("page_headers")
+            if not isinstance(notice_number, int) or not isinstance(
+                page_headers, dict
+            ):
+                continue
+
+            for page_key, page_header in page_headers.items():
+                if not isinstance(page_header, str):
+                    continue
+                try:
+                    page_number = int(page_key)
+                except (TypeError, ValueError):
+                    continue
+
+                for match in ATTACHMENT_HEADER.finditer(page_header):
+                    title = normalize_attachment_title(match.group("title"))
+                    if not title:
+                        continue
+
+                    attachment_key = (
+                        notice_number,
+                        int(match.group("number")),
+                    )
+                    evidence = {
+                        "page": page_number,
+                        "title": title,
+                    }
+                    existing_evidence = attachment_headers.setdefault(
+                        attachment_key,
+                        [],
+                    )
+                    if evidence not in existing_evidence:
+                        existing_evidence.append(evidence)
+
+    return attachment_headers
+
+
+def attachment_number(fragment: str) -> int | None:
+    """Return the number from a single attachment reference."""
+
+    numbers = ATTACHMENT_REFERENCE.findall(fragment)
+    if len(numbers) != 1:
+        return None
+    return int(numbers[0])
+
+
+def match_attachment_location(
+    titles: list[dict[str, object]],
+) -> tuple[dict[str, object] | None, list[str], str]:
+    """Match attachment titles and reject conflicting location rules."""
+
+    matched_locations: list[dict[str, object]] = []
+    matched_rule_ids: list[str] = []
+
+    for evidence in titles:
+        title = evidence.get("title")
+        if not isinstance(title, str):
+            continue
+
+        for pattern, location in ATTACHMENT_LOCATION_RULES:
+            if not pattern.search(title):
+                continue
+
+            if location not in matched_locations:
+                matched_locations.append(location)
+            rule_id = str(location.get("rule_id", pattern.pattern))
+            if rule_id not in matched_rule_ids:
+                matched_rule_ids.append(rule_id)
+
+    if not matched_locations:
+        return None, [], "unmatched"
+
+    coordinates = {
+        tuple(location["inferred_coordinates"])
+        for location in matched_locations
+        if isinstance(location.get("inferred_coordinates"), list)
+    }
+    if len(coordinates) != 1:
+        return None, matched_rule_ids, "ambiguous"
+
+    return matched_locations[0], matched_rule_ids, "matched"
 
 
 def read_records(input_path: Path) -> Iterator[dict[str, Any]]:
@@ -579,13 +728,11 @@ def read_gis_points(input_path: Path) -> dict[int, list[float]]:
 def attachment_index(notice_number: object, fragment: str) -> str | None:
     """Return a notice-scoped reference for a single attachment mention."""
 
-    attachment_numbers = ATTACHMENT_REFERENCE.findall(fragment)
-    if len(attachment_numbers) != 1:
+    number = attachment_number(fragment)
+    if number is None:
         return None
 
-    return (
-        f"zalacznik|uwaga={notice_number}|nr={attachment_numbers[0]}"
-    )
+    return f"zalacznik|uwaga={notice_number}|nr={number}"
 
 
 def is_excluded_from_repeated_search(fragment: str) -> bool:
@@ -597,9 +744,13 @@ def is_excluded_from_repeated_search(fragment: str) -> bool:
 def extracted_records(
     records: Iterable[dict[str, Any]],
     gis_points: dict[int, list[float]],
+    attachment_headers: dict[
+        tuple[int, int], list[dict[str, object]]
+    ] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """Build one record per area fragment and the global reference map."""
 
+    attachment_headers = attachment_headers or {}
     area_indexes: dict[str, str] = {}
     next_area_number = 1
     extracted: list[dict[str, Any]] = []
@@ -632,6 +783,35 @@ def extracted_records(
                     area_indexes[fragment] = reference
                     next_area_number += 1
 
+            attachment_metadata: dict[str, object] = {}
+            attachment_location: dict[str, object] | None = None
+            attachment_number_value = attachment_number(fragment)
+            if attachment_number_value is not None:
+                evidence = attachment_headers.get(
+                    (int(notice_number), attachment_number_value),
+                    [],
+                )
+                attachment_location, rule_ids, match_status = (
+                    match_attachment_location(evidence)
+                    if evidence
+                    else (None, [], "header_not_found")
+                )
+                attachment_metadata = {
+                    "attachment_number": attachment_number_value,
+                    "attachment_header_titles": [
+                        item["title"]
+                        for item in evidence
+                        if isinstance(item.get("title"), str)
+                    ],
+                    "attachment_header_pages": [
+                        item["page"]
+                        for item in evidence
+                        if isinstance(item.get("page"), int)
+                    ],
+                    "attachment_location_rules": rule_ids,
+                    "attachment_location_status": match_status,
+                }
+
             known_location = KNOWN_LOCATIONS.get(fragment)
             inferred_coordinates = (
                 known_location.get("inferred_coordinates")
@@ -647,33 +827,41 @@ def extracted_records(
                 "known_location" if inferred_coordinates is not None else None
             )
 
+            if inferred_coordinates is None and attachment_location is not None:
+                inferred_coordinates = attachment_location.get(
+                    "inferred_coordinates"
+                )
+                inferred_details = attachment_location.get("inferred_details")
+                if inferred_coordinates is not None:
+                    coordinates_source = "attachment_header_rule"
+
             if inferred_coordinates is None and len(fragments) == 1:
                 inferred_coordinates = gis_points.get(int(notice_number))
                 if inferred_coordinates is not None:
                     coordinates_source = "gis_single_area"
 
-            extracted.append(
-                {
-                    "data_wplywu": data_wplywu,
-                    "oznaczenie_uwagi": notice_number,
-                    "kolejnosc": order,
-                    "obszar_extracted_raw": fragment,
-                    "obszar_unique_index": reference,
-                    "inferred_coordinates": inferred_coordinates,
-                    "inferred_coordinates_source": coordinates_source,
-                    "inferred_details": inferred_details,
-                    "pdf_page": pdf_page,
-                }
-            )
+            extracted_record = {
+                "data_wplywu": data_wplywu,
+                "oznaczenie_uwagi": notice_number,
+                "kolejnosc": order,
+                "obszar_extracted_raw": fragment,
+                "obszar_unique_index": reference,
+                "inferred_coordinates": inferred_coordinates,
+                "inferred_coordinates_source": coordinates_source,
+                "inferred_details": inferred_details,
+                "pdf_page": pdf_page,
+            }
+            extracted_record.update(attachment_metadata)
+            extracted.append(extracted_record)
 
     return extracted, area_indexes
 
 
 def fill_repeated_coordinates(records: list[dict[str, Any]]) -> tuple[int, int]:
-    """Fill multi-fragment records from unambiguous single-fragment matches."""
+    """Fill records from unambiguous matches sharing an area unique index."""
 
     notice_sizes = Counter(record["oznaczenie_uwagi"] for record in records)
-    coordinates_by_area: dict[str, set[tuple[float, ...]]] = {}
+    coordinates_by_area_index: dict[str, set[tuple[float, ...]]] = {}
 
     for record in records:
         if notice_sizes[record["oznaczenie_uwagi"]] != 1:
@@ -685,16 +873,20 @@ def fill_repeated_coordinates(records: list[dict[str, Any]]) -> tuple[int, int]:
         if not isinstance(coordinates, list):
             continue
 
-        area = record["obszar_extracted_raw"]
-        coordinates_by_area.setdefault(area, set()).add(tuple(coordinates))
+        area_index = record["obszar_unique_index"]
+        coordinates_by_area_index.setdefault(area_index, set()).add(
+            tuple(coordinates)
+        )
 
     unambiguous_coordinates = {
-        area: next(iter(coordinates))
-        for area, coordinates in coordinates_by_area.items()
+        area_index: next(iter(coordinates))
+        for area_index, coordinates in coordinates_by_area_index.items()
         if len(coordinates) == 1
     }
     conflict_count = sum(
-        1 for coordinates in coordinates_by_area.values() if len(coordinates) > 1
+        1
+        for coordinates in coordinates_by_area_index.values()
+        if len(coordinates) > 1
     )
     filled_count = 0
 
@@ -706,9 +898,7 @@ def fill_repeated_coordinates(records: list[dict[str, Any]]) -> tuple[int, int]:
         if is_excluded_from_repeated_search(record["obszar_extracted_raw"]):
             continue
 
-        coordinates = unambiguous_coordinates.get(
-            record["obszar_extracted_raw"]
-        )
+        coordinates = unambiguous_coordinates.get(record["obszar_unique_index"])
         if coordinates is None:
             continue
 
@@ -754,11 +944,14 @@ def convert(
     input_path: Path,
     output_path: Path,
     gis_input_path: Path,
+    page_headers_input_path: Path = DEFAULT_PAGE_HEADERS_INPUT,
 ) -> tuple[int, int, int, int]:
     gis_points = read_gis_points(gis_input_path)
+    attachment_headers = read_attachment_headers(page_headers_input_path)
     records, area_indexes = extracted_records(
         read_records(input_path),
         gis_points,
+        attachment_headers,
     )
     filled_count, conflict_count = fill_repeated_coordinates(records)
     record_count = write_jsonl(records, output_path)
@@ -791,6 +984,15 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_GIS_INPUT,
         help=f"warstwa punktów GIS (domyślnie: {DEFAULT_GIS_INPUT})",
     )
+    parser.add_argument(
+        "--page-headers-input",
+        type=Path,
+        default=DEFAULT_PAGE_HEADERS_INPUT,
+        help=(
+            "nagłówki stron wniosków JSONL "
+            f"(domyślnie: {DEFAULT_PAGE_HEADERS_INPUT})"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -800,6 +1002,7 @@ def main() -> int:
         args.input,
         args.output,
         args.gis_input,
+        args.page_headers_input,
     )
     print(
         f"Zapisano {record_count} rekordów i {area_count} unikalnych obszarów "
