@@ -522,8 +522,10 @@ ATTACHMENT_HEADER = re.compile(
     re.IGNORECASE,
 )
 
-# Add verified attachment-title patterns here. Coordinates use GeoJSON [x, y]
-# order in EPSG:2177. The title is matched after OCR whitespace cleanup.
+# Szczegoly odnosnie lokalizacji na podstawie danych z nazw załączników.
+# wykorzystywane do lokalizowania uwag które w podsumowaniu urzedu odnosza się tylko do 'Załącznika nr x'
+# a we właściwym wniosku opisują konkretnie o co chodzi.
+# koordynaty [x, y] EPSG:2177
 ATTACHMENT_LOCATION_RULES: tuple[
     tuple[re.Pattern[str], dict[str, object]], ...
 ] = (
@@ -536,6 +538,50 @@ ATTACHMENT_LOCATION_RULES: tuple[
             "inferred_coordinates": [6430806.8, 5659695.2],
             "inferred_details": "Zachowanie kształtu osiedla Alina",
             "rule_id": "zachowanie-osiedla-alina",
+        },
+    ),
+    (
+        re.compile(
+            r"Ziele.*parku.*grabiszy.*iego",
+            re.IGNORECASE,
+        ),
+        {
+            "inferred_coordinates": [6428637.54, 5661062.41],
+            "inferred_details": "Zieleń w rejonie parku Grabiszyńskiego",
+            "rule_id": "zieleń-park-grabiszynski",
+        },
+    ),
+    (
+        re.compile(
+            r"Skala.*zabudowy.*Krzyki.*Partynice",
+            re.IGNORECASE,
+        ),
+        {
+            "inferred_coordinates": [6430095.5, 5659593.1],
+            "inferred_details": "Zachowanie skali zabudowy na Krzykach i Partynicach",
+            "rule_id": "skala-zabudowy-kp",
+        },
+    ),
+    (
+        re.compile(
+            r"W.*przesiadkowy.*Skarbow",
+            re.IGNORECASE,
+        ),
+        {
+            "inferred_coordinates": [6429887.53, 5661163.46],
+            "inferred_details": "Węzeł przesiadkowy koło górki Skarbowców",
+            "rule_id": "wezel-przesiadkowy-gs",
+        },
+    ),
+    (
+        re.compile(
+            r"Sp.*plan.*na.*FAT",
+            re.IGNORECASE,
+        ),
+        {
+            "inferred_coordinates": [6428547.4, 5662729.6],
+            "inferred_details": "Uporządkowanie obszarów wokoł FAT",
+            "rule_id": "spojny-plan-na-fat",
         },
     ),
 )
